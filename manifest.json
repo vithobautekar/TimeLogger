@@ -1,0 +1,9 @@
+{
+  "name": "Track Logger",
+  "short_name": "Logger",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
+``

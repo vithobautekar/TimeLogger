@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>NATRAX Track Logger</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <span id="syncStatus">Checking...</span>
+</head>
+
+<body>
+
+<div id="homeScreen" class="screen active">
+  <h1>Start Session</h1>
+
+  <input id="vehicle" placeholder="Vehicle Make & Model" />
+  <input id="project" placeholder="Project / Test Name" />
+  <input id="driver" placeholder="Driver Name" />
+  
+  <select id="category">
+    <option>4W-Passenger (PV)</option>
+    <option>Commercial (CV)</option>
+    <option>2W</option>
+  </select>
+
+  <input id="pass" placeholder="Access Pass Number" />
+
+  <button onclick="startSession()">START SESSION</button>
+</div>
+
+
+<div id="trackScreen" class="screen">
+  <div class="header">
+    <span id="sessionInfo"></span>
+    <span id="date"></span>
+  </div>
+
+  <div id="grid" class="grid"></div>
+
+  <div class="footer">
+    <button onclick="exportToExcel()">EXPORT EXCEL</button>
+    <button onclick="endSession()">END SESSION</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
+``
