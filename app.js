@@ -1,6 +1,7 @@
 let currentTrack = null;
 let startTime = null;
 let logs = [];
+
 let unsyncedLogs = JSON.parse(localStorage.getItem("unsyncedLogs")) || [];
 
 const API_URL = "https://script.google.com/macros/s/AKfycbzS3qhAASPLqlPrxUYODoBD88ET2kl1NR8iBdK-B4Brw-oVspeotLSNPJDRy1w5ejRg/exec";
@@ -11,11 +12,11 @@ let sessionData = {};
 
 function startSession() {
   sessionData = {
-    vehicle: document.getElementById("vehicle").value,
-    project: document.getElementById("project").value,
-    driver: document.getElementById("driver").value,
+    vehicle: document.getElementById("vehicle").value.trim(),
+    project: document.getElementById("project").value.trim(),
+    driver: document.getElementById("driver").value.trim(),
     category: document.getElementById("category").value,
-    pass: document.getElementById("pass").value
+    pass: document.getElementById("pass").value.trim()
   };
 
   document.getElementById("sessionInfo").innerText = sessionData.vehicle;
@@ -25,6 +26,7 @@ function startSession() {
   document.getElementById("trackScreen").classList.add("active");
 
   buildGrid();
+  updateSyncStatus();
   startAutoSync();
 }
 
@@ -43,7 +45,6 @@ function buildGrid() {
 }
 
 function toggleTrack(track, tile) {
-
   if (currentTrack === null) {
     currentTrack = track;
     startTime = new Date();
@@ -53,26 +54,23 @@ function toggleTrack(track, tile) {
     startTimer(tile);
 
   } else if (currentTrack === track) {
-
     const endTime = new Date();
     const duration = Math.round((endTime - startTime) / 60000);
 
     const log = {
+      logId: generateLogId(sessionData.pass, track, startTime),
       ...sessionData,
-      track,
+      track: track,
       start: startTime.toLocaleString(),
       end: endTime.toLocaleString(),
-      duration,
-      synced: false
+      duration: duration,
+      synced: false,
+      createdAt: new Date().toISOString()
     };
 
     logs.push(log);
 
-    // ✅ ALWAYS store locally first
-    unsyncedLogs.push(log);
-    saveToLocal();
-
-    // ✅ Try sending
+    addToUnsyncedQueue(log);
     sendToGoogle();
 
     currentTrack = null;
@@ -81,36 +79,78 @@ function toggleTrack(track, tile) {
   }
 }
 
+function generateLogId(passNumber, track, entryTime) {
+  const datePart = formatDateForId(entryTime);
+  const passPart = sanitizeForId(passNumber || "NOPASS");
+  const trackPart = sanitizeForId(track);
+  const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  return `NATRAX_${datePart}_${passPart}_${trackPart}_${randomPart}`;
+}
+
+function formatDateForId(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  const second = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}${month}${day}_${hour}${minute}${second}`;
+}
+
+function sanitizeForId(value) {
+  return String(value)
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .toUpperCase();
+}
+
+function addToUnsyncedQueue(log) {
+  const alreadyExists = unsyncedLogs.some(item => item.logId === log.logId);
+
+  if (!alreadyExists) {
+    unsyncedLogs.push(log);
+    saveToLocal();
+    updateSyncStatus();
+  }
+}
+
 function saveToLocal() {
   localStorage.setItem("unsyncedLogs", JSON.stringify(unsyncedLogs));
 }
 
 function sendToGoogle() {
+  if (unsyncedLogs.length === 0) {
+    updateSyncStatus();
+    return;
+  }
 
-  if (unsyncedLogs.length === 0) return;
-
-  // try sending first item
   const log = unsyncedLogs[0];
 
   fetch(API_URL, {
     method: "POST",
     body: JSON.stringify(log)
   })
-  .then(() => {
-    console.log("Synced:", log.track);
+    .then(response => response.json())
+    .then(result => {
+      console.log("Google response:", result);
 
-    // remove from queue
-    unsyncedLogs.shift();
-    saveToLocal();
+      if (result.status === "success" || result.status === "duplicate") {
+        unsyncedLogs.shift();
+        saveToLocal();
+        updateSyncStatus();
 
-    updateSyncStatus();
-
-    // send next
-    sendToGoogle();
-  })
-  .catch(() => {
-    console.log("Offline, retrying later...");
-  });
+        sendToGoogle();
+      } else {
+        console.log("Sync failed:", result.message);
+        updateSyncStatus();
+      }
+    })
+    .catch(error => {
+      console.log("Offline or network error. Will retry later.", error);
+      updateSyncStatus();
+    });
 }
 
 function startAutoSync() {
@@ -118,12 +158,13 @@ function startAutoSync() {
     if (navigator.onLine) {
       sendToGoogle();
     }
+
     updateSyncStatus();
   }, 10000);
 }
 
 function updateSyncStatus() {
-  let indicator = document.getElementById("syncStatus");
+  const indicator = document.getElementById("syncStatus");
 
   if (!indicator) return;
 
@@ -137,21 +178,22 @@ function updateSyncStatus() {
 }
 
 function disableOthers(activeTile) {
-  document.querySelectorAll(".tile").forEach(t => {
-    if (t !== activeTile) t.classList.add("disabled");
+  document.querySelectorAll(".tile").forEach(tile => {
+    if (tile !== activeTile) {
+      tile.classList.add("disabled");
+    }
   });
 }
 
 function enableAll() {
-  document.querySelectorAll(".tile").forEach(t => {
-    t.classList.remove("disabled");
-    t.innerText = t.innerText.split("\n")[0];
+  document.querySelectorAll(".tile").forEach(tile => {
+    tile.classList.remove("disabled");
+    tile.innerText = tile.innerText.split("\n")[0];
   });
 }
 
 function startTimer(tile) {
   const interval = setInterval(() => {
-
     if (currentTrack === null) {
       clearInterval(interval);
       tile.innerText = tile.innerText.split("\n")[0];
@@ -160,14 +202,53 @@ function startTimer(tile) {
 
     const elapsed = Math.floor((new Date() - startTime) / 1000);
     tile.innerText = `${currentTrack}\n${elapsed}s`;
-
   }, 1000);
 }
 
+function exportToExcel() {
+  if (logs.length === 0 && unsyncedLogs.length === 0) {
+    alert("No data to export");
+    return;
+  }
+
+  const allLogs = [...logs, ...unsyncedLogs];
+
+  const data = allLogs.map(log => {
+    const billedHours = Math.max(2, log.duration / 60);
+
+    return {
+      "Log ID": log.logId,
+      "Date": new Date().toLocaleDateString(),
+      "Driver": log.driver,
+      "Vehicle": log.vehicle,
+      "Project": log.project,
+      "Pass": log.pass,
+      "Category": log.category,
+      "Track": log.track,
+      "Entry": log.start,
+      "Exit": log.end,
+      "Duration (min)": log.duration,
+      "Billed Hours": billedHours.toFixed(2),
+      "Sync Status": log.synced ? "Synced" : "Pending"
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Track Logs");
+
+  XLSX.writeFile(workbook, `TrackLogs_${Date.now()}.xlsx`);
+}
+
 function endSession() {
+  if (currentTrack !== null) {
+    alert("Please exit the active track before ending the session.");
+    return;
+  }
+
   if (confirm("End session?")) {
-    alert("Logs saved locally & will sync automatically ✅");
+    alert("Session ended. Any pending logs will sync automatically.");
     location.reload();
   }
 }
-``
